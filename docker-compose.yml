@@ -1,0 +1,177 @@
+services:
+
+  # ---------------- LOGIN/REGISTER SERVICE ----------------
+  mysql_users:
+    image: mariadb:11.4
+    container_name: mysql_users
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: users_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - users_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  login-register-service:
+    build: ./backend/login-register-service
+    container_name: login-register-service
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      DB_HOST: mysql_users
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: users_db
+      JWT_SECRET: spremeni-me-v-produkciji
+      TOKEN_EXP_HOURS: "24"
+    depends_on:
+      mysql_users:
+        condition: service_healthy
+
+  # ---------------- STATIC MENU SERVICE ----------------
+  mysql_menu:
+    image: mariadb:11.4
+    container_name: mysql_menu
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: menu_db
+    ports:
+      - "3308:3306"
+    volumes:
+      - menu_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  static-menu-service:
+    build: ./backend/static-menu-service
+    container_name: static-menu-service
+    restart: unless-stopped
+    ports:
+      - "5002:5000"
+    environment:
+      DB_HOST: mysql_menu
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: menu_db
+      LOGIN_SERVICE_URL: http://login-register-service:5000
+    depends_on:
+      mysql_menu:
+        condition: service_healthy
+      login-register-service:
+        condition: service_started
+
+    # ---------------- ORDER SERVICE ----------------
+  mysql_order:
+    image: mariadb:11.4
+    container_name: mysql_order
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: order_db
+    ports:
+      - "3309:3306"
+    volumes:
+      - order_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-service:
+    build: ./backend/order-service
+    container_name: order-service
+    restart: unless-stopped
+    ports:
+      - "5003:5000"
+    environment:
+      DB_HOST: mysql_order
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: order_db
+      LOGIN_SERVICE_URL: http://login-register-service:5000
+      MENU_SERVICE_URL: http://static-menu-service:5000
+    depends_on:
+      mysql_order:
+        condition: service_healthy
+      login-register-service:
+        condition: service_started
+      static-menu-service:
+        condition: service_started
+
+    # ---------------- SHIPPING SERVICE ----------------
+  mysql_shipping:
+    image: mariadb:11.4
+    container_name: mysql_shipping
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: shipping_db
+    ports:
+      - "3310:3306"
+    volumes:
+      - shipping_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  shipping-service:
+    build: ./backend/shipping-service
+    container_name: shipping-service
+    restart: unless-stopped
+    ports:
+      - "5004:5000"
+    environment:
+      DB_HOST: mysql_shipping
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: shipping_db
+      LOGIN_SERVICE_URL: http://login-register-service:5000
+      ORDER_SERVICE_URL: http://order-service:5000
+    depends_on:
+      mysql_shipping:
+        condition: service_healthy
+      login-register-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+
+    # ---------------- FRONTEND (Next.js) ----------------
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_LOGIN_SERVICE_URL: http://localhost:5001
+        NEXT_PUBLIC_MENU_SERVICE_URL: http://localhost:5002
+        NEXT_PUBLIC_ORDER_SERVICE_URL: http://localhost:5003
+        NEXT_PUBLIC_SHIPPING_SERVICE_URL: http://localhost:5004
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - login-register-service
+      - static-menu-service
+      - order-service
+      - shipping-service
+
+
+
+volumes:
+  users_db_data:
+  menu_db_data:
+  order_db_data:
+  shipping_db_data:

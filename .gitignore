@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Dependencies and build output
+node_modules/
+.next/
+
+# Local environment files and secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*

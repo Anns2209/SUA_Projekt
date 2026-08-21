@@ -102,6 +102,7 @@ def init_db(retries=10, delay=3):
 def generate_token(user):
     payload = {
         "sub": user["id"],
+        "name": f"{user['ime']} {user['priimek']}",
         "username": user["username"],
         "vloga": user["vloga"],
         "ver": user["token_version"],
@@ -109,7 +110,6 @@ def generate_token(user):
         "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXP_HOURS),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-
 
 def decode_token(token):
     return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])

@@ -13,6 +13,7 @@ export default function Navbar() {
       </div>
       <div className="navbar-links">
         <Link href="/menu">Meni</Link>
+        <Link href="/stats">Statistika</Link>
         {user && <Link href="/cart">Košarica{count > 0 ? ` (${count})` : ''}</Link>}
         {user && <Link href="/orders">Moja naročila</Link>}
         {user?.vloga === 'administrator' && <Link href="/admin/shipping">Dostave (admin)</Link>}

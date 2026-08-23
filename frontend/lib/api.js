@@ -11,6 +11,9 @@ export const ORDER_SERVICE_URL =
 export const SHIPPING_SERVICE_URL =
   process.env.NEXT_PUBLIC_SHIPPING_SERVICE_URL || 'http://localhost:5004';
 
+export const STATISTICS_SERVICE_URL =
+  process.env.NEXT_PUBLIC_STATISTICS_SERVICE_URL || 'https://sua-projekt.onrender.com';
+
 export function authHeader(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

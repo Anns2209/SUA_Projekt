@@ -19,6 +19,7 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
+const { correlationMiddleware, requestLoggerMiddleware } = require('./requestLogger');
 
 const app = express();
 app.use((req, res, next) => {
@@ -34,6 +35,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.use(correlationMiddleware);
+app.use(requestLoggerMiddleware);
 
 const PORT = process.env.PORT || 5000;
 const LOGIN_SERVICE_URL = process.env.LOGIN_SERVICE_URL || 'http://login-register-service:5000';
@@ -87,18 +90,29 @@ async function initDb(retries = 10, delay = 3000) {
   throw new Error('Povezava z bazo ni uspela.');
 }
 
-// ---- pomožna funkcija: preveri token pri Login/Register storitvi ----
-async function verifyToken(authHeader) {
+async function verifyToken(authHeader, correlationId) {
   if (!authHeader) return null;
   try {
     const res = await axios.get(`${LOGIN_SERVICE_URL}/token/verify`, {
-      headers: { Authorization: authHeader },
+      headers: {
+        Authorization: authHeader,
+        'X-Correlation-Id': correlationId, // posreduj correlation ID naprej
+      },
       timeout: 5000,
     });
     return res.data.valid ? res.data : null;
   } catch (err) {
     return null;
   }
+}
+
+function requireAuth() {
+  return async (req, res, next) => {
+    const user = await verifyToken(req.headers.authorization, req.correlationId);
+    if (!user) return res.status(401).json({ error: 'Neveljaven ali manjkajoč token' });
+    req.user = user;
+    next();
+  };
 }
 
 function requireAuth() {

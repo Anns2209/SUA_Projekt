@@ -21,6 +21,7 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
+const { correlationMiddleware, requestLoggerMiddleware } = require('./requestLogger');
 
 const app = express();
 app.use((req, res, next) => {
@@ -36,6 +37,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.use(correlationMiddleware);
+app.use(requestLoggerMiddleware);
 
 const PORT = process.env.PORT || 5000;
 const LOGIN_SERVICE_URL = process.env.LOGIN_SERVICE_URL || 'http://login-register-service:5000';
@@ -92,11 +95,14 @@ async function initDb(retries = 10, delay = 3000) {
 }
 
 // ---- Login/Register Service: preveri token ----
-async function verifyToken(authHeader) {
+async function verifyToken(authHeader, correlationId) {
   if (!authHeader) return null;
   try {
     const res = await axios.get(`${LOGIN_SERVICE_URL}/token/verify`, {
-      headers: { Authorization: authHeader },
+      headers: {
+        Authorization: authHeader,
+        'X-Correlation-Id': correlationId,
+      },
       timeout: 5000,
     });
     return res.data.valid ? res.data : null;
@@ -105,10 +111,12 @@ async function verifyToken(authHeader) {
   }
 }
 
-// ---- Static Menu Service: pridobi uradne podatke o jedi ----
-async function getDish(dishId) {
+async function getDish(dishId, correlationId) {
   try {
-    const res = await axios.get(`${MENU_SERVICE_URL}/menu/${dishId}`, { timeout: 5000 });
+    const res = await axios.get(`${MENU_SERVICE_URL}/menu/${dishId}`, {
+      headers: { 'X-Correlation-Id': correlationId },
+      timeout: 5000,
+    });
     return res.data;
   } catch (err) {
     return null;
@@ -117,7 +125,7 @@ async function getDish(dishId) {
 
 function requireAuth() {
   return async (req, res, next) => {
-    const user = await verifyToken(req.headers.authorization);
+    const user = await verifyToken(req.headers.authorization, req.correlationId);
     if (!user) return res.status(401).json({ error: 'Neveljaven ali manjkajoč token' });
     req.user = user;
     next();
@@ -185,7 +193,7 @@ app.post('/order', requireAuth(), async (req, res) => {
     if (!it.dish_id || !it.kolicina || it.kolicina < 1) {
       return res.status(400).json({ error: 'Vsaka postavka potrebuje dish_id in kolicina >= 1' });
     }
-    const dish = await getDish(it.dish_id);
+    const dish = await getDish(it.dish_id, req.correlationId);
     if (!dish || dish.error) {
       return res.status(400).json({ error: `Jed z id=${it.dish_id} ne obstaja na meniju` });
     }

@@ -24,8 +24,37 @@ import pymysql
 from flask import Flask, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+import uuid
+from flask import g
+from logger import publish_log
 
 app = Flask(__name__)
+
+
+@app.before_request
+def assign_correlation_id():
+    # Prevzame correlation ID iz zaglavja (če ga je poslala druga storitev),
+    # sicer ustvari novega -> omogoča sledljivost klicev preko več storitev.
+    g.correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+
+
+@app.after_request
+def log_request(response):
+    if response.status_code >= 500:
+        level = "ERROR"
+    elif response.status_code >= 400:
+        level = "WARN"
+    else:
+        level = "INFO"
+
+    publish_log(
+        level=level,
+        url=request.url,
+        correlation_id=getattr(g, "correlation_id", "-"),
+        message=f"{request.method} {request.path} -> {response.status_code}",
+    )
+    response.headers["X-Correlation-Id"] = getattr(g, "correlation_id", "-")
+    return response
 
 
 @app.after_request

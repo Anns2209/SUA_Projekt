@@ -1,5 +1,61 @@
 services:
 
+    # ---------------- RABBITMQ (sporočilni posrednik za logging) ----------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: gostilna
+      RABBITMQ_DEFAULT_PASS: gostilnapass
+    ports:
+      - "5672:5672"    # AMQP protokol (za mikrostoritve)
+      - "15672:15672"  # Management UI (http://localhost:15672)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    # ---------------- LOGGING SERVICE ----------------
+  mysql_logs:
+    image: mariadb:11.4
+    container_name: mysql_logs
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: logs_db
+    ports:
+      - "3311:3306"
+    volumes:
+      - logs_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  logging-service:
+    build: ./backend/logging-service
+    container_name: logging-service
+    restart: unless-stopped
+    ports:
+      - "5005:5000"
+    environment:
+      DB_HOST: mysql_logs
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: logs_db
+      RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
+      EXCHANGE_NAME: logs_exchange
+      QUEUE_NAME: logging_queue
+      ROUTING_PATTERN: "log.#"
+    depends_on:
+      mysql_logs:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  
   # ---------------- LOGIN/REGISTER SERVICE ----------------
   mysql_users:
     image: mariadb:11.4
@@ -31,8 +87,13 @@ services:
       DB_NAME: users_db
       JWT_SECRET: spremeni-me-v-produkciji
       TOKEN_EXP_HOURS: "24"
+      SERVICE_NAME: login-register-service
+      RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
+      EXCHANGE_NAME: logs_exchange
     depends_on:
       mysql_users:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # ---------------- STATIC MENU SERVICE ----------------
@@ -65,11 +126,16 @@ services:
       DB_PASSWORD: rootpassword
       DB_NAME: menu_db
       LOGIN_SERVICE_URL: http://login-register-service:5000
+      SERVICE_NAME: static-menu-service
+      RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
+      EXCHANGE_NAME: logs_exchange
     depends_on:
       mysql_menu:
         condition: service_healthy
       login-register-service:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
     # ---------------- ORDER SERVICE ----------------
   mysql_order:
@@ -79,6 +145,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: order_db
+      
     ports:
       - "3309:3306"
     volumes:
@@ -102,6 +169,9 @@ services:
       DB_NAME: order_db
       LOGIN_SERVICE_URL: http://login-register-service:5000
       MENU_SERVICE_URL: http://static-menu-service:5000
+      SERVICE_NAME: order-service
+      RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
+      EXCHANGE_NAME: logs_exchange
     depends_on:
       mysql_order:
         condition: service_healthy
@@ -109,6 +179,8 @@ services:
         condition: service_started
       static-menu-service:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
     # ---------------- SHIPPING SERVICE ----------------
   mysql_shipping:
@@ -141,6 +213,9 @@ services:
       DB_NAME: shipping_db
       LOGIN_SERVICE_URL: http://login-register-service:5000
       ORDER_SERVICE_URL: http://order-service:5000
+      SERVICE_NAME: shipping-service
+      RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
+      EXCHANGE_NAME: logs_exchange
     depends_on:
       mysql_shipping:
         condition: service_healthy
@@ -148,6 +223,8 @@ services:
         condition: service_started
       order-service:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
     # ---------------- FRONTEND (Next.js) ----------------
   frontend:
@@ -175,3 +252,4 @@ volumes:
   menu_db_data:
   order_db_data:
   shipping_db_data:
+  logs_db_data:

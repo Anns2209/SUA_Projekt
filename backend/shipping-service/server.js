@@ -21,6 +21,7 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
+const { correlationMiddleware, requestLoggerMiddleware } = require('./requestLogger');
 
 const app = express();
 app.use((req, res, next) => {
@@ -36,6 +37,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.use(correlationMiddleware);
+app.use(requestLoggerMiddleware);
 
 const PORT = process.env.PORT || 5000;
 const LOGIN_SERVICE_URL = process.env.LOGIN_SERVICE_URL || 'http://login-register-service:5000';
@@ -82,11 +85,14 @@ async function initDb(retries = 10, delay = 3000) {
 }
 
 // ---- Login/Register Service ----
-async function verifyToken(authHeader) {
+async function verifyToken(authHeader, correlationId) {
   if (!authHeader) return null;
   try {
     const res = await axios.get(`${LOGIN_SERVICE_URL}/token/verify`, {
-      headers: { Authorization: authHeader },
+      headers: {
+        Authorization: authHeader,
+        'X-Correlation-Id': correlationId,
+      },
       timeout: 5000,
     });
     return res.data.valid ? res.data : null;
@@ -95,11 +101,13 @@ async function verifyToken(authHeader) {
   }
 }
 
-// ---- Order Service ----
-async function getOrder(orderId, authHeader) {
+async function getOrder(orderId, authHeader, correlationId) {
   try {
     const res = await axios.get(`${ORDER_SERVICE_URL}/orders/${orderId}`, {
-      headers: { Authorization: authHeader },
+      headers: {
+        Authorization: authHeader,
+        'X-Correlation-Id': correlationId,
+      },
       timeout: 5000,
     });
     return res.data;
@@ -108,12 +116,18 @@ async function getOrder(orderId, authHeader) {
   }
 }
 
-async function markOrderDelivered(orderId, authHeader) {
+async function markOrderDelivered(orderId, authHeader, correlationId) {
   try {
     await axios.put(
       `${ORDER_SERVICE_URL}/order/${orderId}/status`,
       { status: 'delivered' },
-      { headers: { Authorization: authHeader }, timeout: 5000 }
+      {
+        headers: {
+          Authorization: authHeader,
+          'X-Correlation-Id': correlationId,
+        },
+        timeout: 5000,
+      }
     );
     return true;
   } catch (err) {
@@ -123,7 +137,7 @@ async function markOrderDelivered(orderId, authHeader) {
 
 function requireStaff() {
   return async (req, res, next) => {
-    const user = await verifyToken(req.headers.authorization);
+    const user = await verifyToken(req.headers.authorization, req.correlationId);
     if (!user) return res.status(401).json({ error: 'Neveljaven ali manjkajoč token' });
     if (user.vloga !== 'administrator') {
       return res.status(403).json({ error: 'Dostop imajo samo zaposleni/administratorji' });
@@ -132,6 +146,7 @@ function requireStaff() {
     next();
   };
 }
+
 
 // ================= GET =================
 
@@ -164,7 +179,7 @@ app.post('/shipping', requireStaff(), async (req, res) => {
   const { order_id } = req.body;
   if (!order_id) return res.status(400).json({ error: 'order_id je obvezen' });
 
-  const order = await getOrder(order_id, req.headers.authorization);
+  const order = await getOrder(order_id, req.headers.authorization, req.correlationId);
   if (!order || order.error) {
     return res.status(404).json({ error: 'Naročilo ne obstaja v Order Service' });
   }
@@ -242,7 +257,7 @@ app.put('/shipping/:id/status', requireStaff(), async (req, res) => {
 
     let orderSync = true;
     if (status === 'dostavljeno') {
-      orderSync = await markOrderDelivered(rows[0].order_id, req.headers.authorization);
+      orderSync = await markOrderDelivered(rows[0].order_id, req.headers.authorization, req.correlationId);
     }
 
     res.json({

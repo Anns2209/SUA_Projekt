@@ -1,7 +1,7 @@
 {
-  "name": "static-menu-service",
+  "name": "logging-service",
   "version": "1.0.0",
-  "description": "Static Menu Service - jedi in komentarji",
+  "description": "Logging Service - prenos logov iz RabbitMQ v bazo",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,8 +9,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "mysql2": "^3.11.0",
-    "axios": "^1.7.7",
-    "dotenv": "^16.4.5",
-    "amqplib": "^0.10.4"
+    "amqplib": "^0.10.4",
+    "dotenv": "^16.4.5"
   }
 }

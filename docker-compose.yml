@@ -172,6 +172,7 @@ services:
       SERVICE_NAME: order-service
       RABBITMQ_URL: amqp://gostilna:gostilnapass@rabbitmq:5672
       EXCHANGE_NAME: logs_exchange
+      STATISTICS_SERVICE_URL: http://statistics-service:5000
     depends_on:
       mysql_order:
         condition: service_healthy
@@ -181,6 +182,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      statistics-service:
+        condition: service_started
 
     # ---------------- SHIPPING SERVICE ----------------
   mysql_shipping:
@@ -225,6 +228,16 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+
+    # ---------------- STATISTICS SERVICE ----------------
+  statistics-service:
+    build: ./backend/statistics-service
+    container_name: statistics-service
+    restart: unless-stopped
+    ports:
+      - "5006:5000"
+    environment:
+      MONGODB_URI: mongodb+srv://anagjorcheska_db_user:z6gTC7ozQkWNrU4U@cluster0.dt4gwgf.mongodb.net/statistics_db?retryWrites=true&w=majority&appName=Cluster0
 
     # ---------------- FRONTEND (Next.js) ----------------
   frontend:

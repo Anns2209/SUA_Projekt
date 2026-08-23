@@ -22,6 +22,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const { correlationMiddleware, requestLoggerMiddleware } = require('./requestLogger');
+const statsMiddleware = require('./statsMiddleware');
 
 const app = express();
 app.use((req, res, next) => {
@@ -39,6 +40,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(correlationMiddleware);
 app.use(requestLoggerMiddleware);
+app.use(statsMiddleware);
 
 const PORT = process.env.PORT || 5000;
 const LOGIN_SERVICE_URL = process.env.LOGIN_SERVICE_URL || 'http://login-register-service:5000';
